@@ -1,7 +1,7 @@
 [package]
-name = "exonum_bitcoinrpc"
-version = "0.6.0"
-authors = ["The Exonum Team <exonum@bitfury.com>"]
+name = "exonum_bitcoinrpc_zec_exp"
+version = "0.6.2"
+authors = ["The Exonum Team <exonum@bitfury.com>, modified by Sound Fintech Solutions"]
 repository = "https://github.com/exonum/bitcoinrpc"
 description = "Bitcoin RPC API client."
 license = "Apache-2.0"

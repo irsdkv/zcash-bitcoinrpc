@@ -7,15 +7,15 @@ extern crate serde_json;
 #[macro_use]
 extern crate log;
 extern crate failure;
-#[macro_use] 
+#[macro_use]
 extern crate failure_derive;
-#[macro_use] 
+#[macro_use]
 extern crate display_derive;
 
 use std::collections::BTreeMap;
 use std::io;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::value::Value;
 
 use exonum_jsonrpc::client::Client as RpcClient;
@@ -33,12 +33,16 @@ pub enum Error {
     TransactionRejected(String),
     #[display(fmt = "Insufficient funds.")]
     InsufficientFunds,
+    #[display(fmt = "Wallet error: {}", _0)]
+    WalletError(String),
+    #[display(fmt = "Invalid amount")]
+    InvalidAmount,
     #[display(fmt = "Transaction already in chain.")]
     TransactionAlreadyInChain,
     #[display(fmt = "{}", _0)]
     Rpc(RpcError),
     #[display(fmt = "{}", _0)]
-    Other(io::Error)
+    Other(io::Error),
 }
 
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -62,6 +66,8 @@ impl From<RpcError> for Error {
                         .into();
 
                     match code {
+                        -3 => return Error::InvalidAmount,
+                        -4 => return Error::WalletError(msg),
                         -5 => return Error::NoInformation(msg),
                         -6 => return Error::InsufficientFunds,
                         -7 => return Error::Memory(msg),
@@ -114,19 +120,60 @@ pub struct Info {
 }
 
 #[derive(Clone, Deserialize, Debug)]
-pub struct AddressInfo {
+pub struct ValidateAddressInfo {
     pub isvalid: bool,
+    pub address: String,
+    #[serde(rename = "scriptPubKey")]
+    pub script_pubkey: String,
+    pub isscript: bool,
+    pub iswitness: bool,
+    pub witness_version: Option<u64>,
+    pub witness_program: Option<String>
+}
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct EmbeddedAddressInfo {
+    pub isscript: bool,
+    pub iswitness: bool,
+    pub witness_version: u64,
+    pub witness_program: String,
+    pub pubkey: String,
+    pub address: String,
+    #[serde(rename = "scriptPubKey")]
+    pub script_pubkey: String
+}
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct LabelAddressInfo {
+    pub name: String,
+    pub purpose: String,
+}
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct AddressInfo {
     pub address: String,
     #[serde(rename = "scriptPubKey")]
     pub script_pubkey: String,
     pub ismine: bool,
     pub iswatchonly: bool,
     pub isscript: bool,
-    pub pubkey: String,
+    pub iswitness: bool,
+    pub witness_version: u64,
+    pub witness_program: Option<String>,
+    pub script: Option<String>,
+    pub hex: Option<String>,
+    pub pubkeys: Option<Vec<String>>,
+    pub sigsrequired: Option<u64>,
+    pub pubkey: Option<String>,
+    pub embedded: Option<EmbeddedAddressInfo>,
     pub iscompressed: bool,
+    pub label: String,
     pub account: Option<String>,
-    pub hdkeypath: String,
-    pub hdmasterkeyid: String,
+    pub timestamp: Option<u64>,
+    pub hdkeypath: Option<String>,
+    pub hdseedid: Option<String>,
+    pub hdmasterkeyid: Option<String>,
+    pub labels: Vec<LabelAddressInfo>
 }
 
 #[derive(Clone, Deserialize, Debug, PartialEq)]
@@ -187,7 +234,100 @@ pub struct RawTransactionInfo {
 }
 
 #[derive(Clone, Deserialize, Debug)]
+pub struct TransactionDetails {
+    #[serde(rename = "involvesWatchonly")]
+    involves_watchonly: Option<bool>,
+    account: String,
+    address: Option<String>,
+    category: String,
+    amount: f64,
+    vout: u32,
+    fee: Option<f64>,
+    abandoned: Option<bool>,
+    label: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct WalletTransactionInfo {
+    pub amount: f64,
+    pub fee: Option<f64>,
+    pub confirmations: u64,
+    pub generated: Option<bool>,
+    pub blockhash: Option<String>,
+    pub blockindex: Option<u64>,
+    pub blocktime: Option<u64>,
+    pub txid: String,
+    pub walletconflicts: Vec<String>,
+    pub time: u64,
+    pub timereceived: u64,
+    #[serde(rename = "bip125-replaceable")]
+    pub bip125_replaceable: String,
+    pub comment: Option<String>,
+    pub to: Option<String>,
+    pub details: Option<Vec<TransactionDetails>>,
+    pub hex: String
+}
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct ZecWalletTransactionInfo {
+    pub amount: f64,
+    pub fee: Option<f64>,
+    pub confirmations: u64,
+    pub generated: Option<bool>,
+    pub blockhash: Option<String>,
+    pub blockindex: Option<u64>,
+    pub blocktime: Option<u64>,
+    pub expiryheight: Option<u64>,
+    pub txid: String,
+    pub walletconflicts: Vec<String>,
+    pub time: u64,
+    pub timereceived: u64,
+    pub vjoinsplit: Vec<String>,
+    pub details: Vec<TransactionDetails>,
+    pub hex: String
+}
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct ZecRawTransactionInfo {
+    pub hex: Option<String>,
+    pub txid: String,
+    pub overwintered: bool,
+    pub version: u32,
+    pub versiongroupid: String,
+    pub expiryheight: u32,
+    pub locktime: u32,
+    pub vin: Vec<TxIn>,
+    pub vout: Vec<TxOut>,
+    pub vjoinsplit: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct ScriptInfo {
+    pub asm: String,
+    #[serde(rename = "type")]
+    pub key_type: String,
+    pub p2sh: String,
+}
+
+#[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct UnspentTransactionInfo {
+    pub txid: String,
+    pub vout: u32,
+    pub address: String,
+    pub account: Option<String>,
+    #[serde(rename = "scriptPubKey")]
+    pub script_pubkey: String,
+    #[serde(rename = "redeemScript")]
+    pub redeem_script: Option<String>,
+    pub amount: f64,
+    pub confirmations: u64,
+    pub spendable: bool,
+    #[serde(skip)]
+    pub solvable: bool,
+}
+
+#[derive(Clone, Deserialize, Serialize, Debug)]
+pub struct UnspentTransactionInfoZec {
     pub txid: String,
     pub vout: u32,
     pub address: String,
@@ -199,7 +339,18 @@ pub struct UnspentTransactionInfo {
     pub amount: f64,
     pub confirmations: u64,
     pub spendable: bool,
-    pub solvable: bool,
+}
+
+#[derive(Clone, Deserialize, Serialize, Debug)]
+pub struct ReceivedByAddress {
+    #[serde(rename = "involvesWatchonly")]
+    pub involves_watchonly: Option<bool>,
+    pub address: String,
+    pub account: String,
+    pub amount: f64,
+    pub confirmations: u64,
+    pub label: Option<String>,
+    pub txids: Vec<String>,
 }
 
 #[derive(Clone, Serialize, Debug)]
@@ -212,20 +363,31 @@ pub struct DependentOutput {
     pub redeem_script: String,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Deserialize, Serialize, Debug)]
+pub struct SignTxOutputError {
+    pub txid: String,
+    pub vout: i32,
+    #[serde(rename = "scriptSig")]
+    pub script_sig: String,
+    pub sequence: u32,
+    pub error: String,
+}
+
+#[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct SignTxOutput {
     pub hex: String,
     pub complete: bool,
+    pub errors: Option<Vec<SignTxOutputError>>,
 }
 
-#[derive(Clone, Serialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TransactionInput {
     pub txid: String,
     pub vout: u32,
     pub sequence: Option<u64>,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct TransactionOutput {
     pub address: String,
     pub value: String,
@@ -253,7 +415,9 @@ impl Client {
     where
         S: Into<String>,
     {
-        Client { inner: RpcClient::new(url.into(), user.map(Into::into), password.map(Into::into)) }
+        Client {
+            inner: RpcClient::new(url.into(), user.map(Into::into), password.map(Into::into)),
+        }
     }
 
     pub fn url(&self) -> &str {
@@ -290,12 +454,26 @@ impl Client {
         self.request("getinfo", Vec::new())
     }
 
-    pub fn getnewaddress(&self) -> Result<String> {
-        self.request("getnewaddress", vec![])
+    pub fn getnewaddress(&self, account: &str) -> Result<String> {
+        self.request("getnewaddress", vec![Value::String(account.to_owned())])
     }
 
-    pub fn validateaddress(&self, addr: &str) -> Result<AddressInfo> {
+    pub fn getnewaddress_legacy(&self, account: &str) -> Result<String> {
+        self.request(
+            "getnewaddress",
+            vec![
+                Value::String(account.to_owned()),
+                Value::String("legacy".to_string()),
+            ],
+        )
+    }
+
+    pub fn validateaddress(&self, addr: &str) -> Result<ValidateAddressInfo> {
         self.request("validateaddress", vec![Value::String(addr.to_owned())])
+    }
+
+    pub fn getaddressinfo(&self, addr: &str) -> Result<AddressInfo> {
+        self.request("getaddressinfo", vec![Value::String(addr.to_owned())])
     }
 
     pub fn createmultisig<V: AsRef<[String]>>(&self, signs: u8, addrs: V) -> Result<MultiSig> {
@@ -322,6 +500,11 @@ impl Client {
         self.request("getrawtransaction", params)
     }
 
+    pub fn getrawtransaction_verbose_zec(&self, txid: &str) -> Result<ZecRawTransactionInfo> {
+        let params = json!([txid, 1]).as_array().cloned().unwrap();
+        self.request("getrawtransaction", params)
+    }
+
     pub fn createrawtransaction<T, O>(
         &self,
         transactions: T,
@@ -333,9 +516,12 @@ impl Client {
         O: AsRef<[TransactionOutput]>,
     {
         let mut map = BTreeMap::new();
-        map.extend(outputs.as_ref().iter().map(|x| {
-            (x.address.clone(), x.value.clone())
-        }));
+        map.extend(
+            outputs
+                .as_ref()
+                .iter()
+                .map(|x| (x.address.clone(), x.value.clone())),
+        );
         if let Some(data) = data {
             map.insert("data".into(), data);
         }
@@ -366,6 +552,27 @@ impl Client {
             .as_array()
             .cloned()
             .unwrap();
+        self.request("signrawtransaction", params)
+    }
+
+    pub fn signrawtransaction_all<O, K>(
+        &self,
+        txhex: &str,
+        outputs: O,
+        priv_keys: K,
+    ) -> Result<SignTxOutput>
+    where
+        O: AsRef<[DependentOutput]>,
+        K: AsRef<[String]>,
+    {
+        let params = json!([
+            txhex,
+            outputs.as_ref(),
+            priv_keys.as_ref(),
+            "ALL".to_string()
+        ]).as_array()
+        .cloned()
+        .unwrap();
         self.request("signrawtransaction", params)
     }
 
@@ -416,6 +623,19 @@ impl Client {
         self.request("listunspent", params)
     }
 
+    pub fn listunspent_zcash<V: AsRef<str> + Serialize>(
+        &self,
+        min_confirmations: u32,
+        max_confirmations: u32,
+        addresses: &[V],
+    ) -> Result<Vec<UnspentTransactionInfoZec>> {
+        let params = json!([min_confirmations, max_confirmations, addresses])
+            .as_array()
+            .cloned()
+            .unwrap();
+        self.request("listunspent", params)
+    }
+
     pub fn importaddress(&self, addr: &str, label: &str, rescan: bool, p2sh: bool) -> Result<()> {
         let params = json!([addr, label, rescan, p2sh])
             .as_array()
@@ -424,8 +644,17 @@ impl Client {
         // special case for decode {"result":null}
         let r: Result<Option<bool>> = self.request("importaddress", params);
         match r {
-            Ok(_) |
-            Err(Error::Rpc(RpcError::NoErrorOrResult)) => Ok(()),
+            Ok(_) | Err(Error::Rpc(RpcError::NoErrorOrResult)) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn importaddress_zcash(&self, addr: &str, label: &str, rescan: bool) -> Result<()> {
+        let params = json!([addr, label, rescan]).as_array().cloned().unwrap();
+        // special case for decode {"result":null}
+        let r: Result<Option<bool>> = self.request("importaddress", params);
+        match r {
+            Ok(_) | Err(Error::Rpc(RpcError::NoErrorOrResult)) => Ok(()),
             Err(e) => Err(e),
         }
     }
@@ -457,6 +686,16 @@ impl Client {
         self.request("getreceivedbyaddress", params)
     }
 
+    pub fn gettransaction(&self, txid: &str) -> Result<WalletTransactionInfo> {
+        let params = json!([txid]).as_array().cloned().unwrap();
+        self.request("gettransaction", params)
+    }
+
+    pub fn gettransaction_zec(&self, txid: &str) -> Result<ZecWalletTransactionInfo> {
+        let params = json!([txid]).as_array().cloned().unwrap();
+        self.request("gettransaction", params)
+    }
+
     pub fn getblockcount(&self) -> Result<u64> {
         self.request("getblockcount", vec![])
     }
@@ -466,18 +705,30 @@ impl Client {
     }
 
     pub fn getblockhash(&self, height: u64) -> Result<String> {
-        let params = json!([height])
-            .as_array()
-            .cloned()
-            .unwrap();
+        let params = json!([height]).as_array().cloned().unwrap();
         self.request("getblockhash", params)
     }
 
     pub fn getblock<S: AsRef<str> + Serialize>(&self, hash: S) -> Result<String> {
-        let params = json!([hash.as_ref(), 0])
+        let params = json!([hash.as_ref(), 0]).as_array().cloned().unwrap();
+        self.request("getblock", params)
+    }
+
+    pub fn decodescript(&self, script: &str) -> Result<ScriptInfo> {
+        let params = json!([script]).as_array().cloned().unwrap();
+        self.request("decodescript", params)
+    }
+
+    pub fn listreceivedbyaddress(
+        &self,
+        confirmations: u64,
+        include_empty: bool,
+        watch_only: bool,
+    ) -> Result<Vec<ReceivedByAddress>> {
+        let params = json!([confirmations, include_empty, watch_only])
             .as_array()
             .cloned()
             .unwrap();
-        self.request("getblock", params)
+        self.request("listreceivedbyaddress", params)
     }
 }
